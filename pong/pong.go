@@ -18,10 +18,10 @@ type pos struct {
 
 type ball struct {
 	pos
-	radius    float32
-	xvelocity float32
-	yvelocity float32
-	color     color
+	radius float32
+	xv     float32
+	yv     float32
+	color  color
 }
 
 func (ball *ball) draw(pixels []byte) {
@@ -30,6 +30,32 @@ func (ball *ball) draw(pixels []byte) {
 			if x*x+y*y < ball.radius*ball.radius {
 				setPixel(int(ball.x+x), int(ball.y+y), ball.color, pixels)
 			}
+		}
+	}
+}
+
+func (ball *ball) update(leftPaddle *paddle, rightPaddle *paddle) {
+	ball.x += ball.xv
+	ball.y += ball.yv
+
+	if int(ball.y-ball.radius) < 0 || int(ball.y+ball.radius) > winHeight {
+		ball.yv = -ball.yv
+	}
+	if ball.x < 0 || int(ball.x+ball.radius) > winWidth {
+		ball.x, ball.y = 300, 300
+	}
+
+	if ball.x-ball.radius < leftPaddle.x+leftPaddle.w/2 {
+		if ball.y > leftPaddle.y-leftPaddle.h/2 &&
+			ball.y < leftPaddle.y+leftPaddle.h/2 {
+			ball.xv = -ball.xv
+		}
+	}
+
+	if ball.x+ball.radius > rightPaddle.x-rightPaddle.w/2 {
+		if ball.y > rightPaddle.y-rightPaddle.h/2 &&
+			ball.y < rightPaddle.y+rightPaddle.h/2 {
+			ball.xv = -ball.xv
 		}
 	}
 }
@@ -52,12 +78,31 @@ func (paddle *paddle) draw(pixels []byte) {
 	}
 }
 
+func (paddle *paddle) update(keystate []uint8) {
+	if keystate[sdl.SCANCODE_UP] != 0 {
+		paddle.y -= 0.25
+	}
+	if keystate[sdl.SCANCODE_DOWN] != 0 {
+		paddle.y += 0.25
+	}
+}
+
+func (paddle *paddle) aiUpdate(ball *ball) {
+	paddle.y = ball.y
+}
+
 func setPixel(x, y int, c color, pixels []byte) {
 	index := (y*winWidth + x) * 4
 	if index < len(pixels)-4 && index >= 0 {
 		pixels[index] = c.r
 		pixels[index+1] = c.g
 		pixels[index+2] = c.b
+	}
+}
+
+func clear(pixels []byte) {
+	for i := range pixels {
+		pixels[i] = 0
 	}
 }
 
@@ -92,8 +137,11 @@ func main() {
 	defer texture.Destroy()
 
 	pixels := make([]byte, winWidth*winHeight*4)
+	ball := ball{pos{300, 300}, 20, 0.2, 0.2, color{255, 255, 255}}
 	player1 := paddle{pos{50, 100}, 20, 100, color{255, 255, 255}}
-	ball := ball{pos{300, 300}, 20, 0, 0, color{255, 255, 255}}
+	player2 := paddle{pos{float32(winWidth - 50), float32(winHeight - 100)}, 20, 100, color{255, 255, 255}}
+
+	keystate := sdl.GetKeyboardState()
 
 	for {
 		for event := sdl.PollEvent(); event != nil; event = sdl.PollEvent() {
@@ -103,8 +151,15 @@ func main() {
 			}
 		}
 
+		clear(pixels)
+
 		player1.draw(pixels)
+		player2.draw(pixels)
 		ball.draw(pixels)
+
+		player1.update(keystate)
+		player2.aiUpdate(&ball)
+		ball.update(&player1, &player2)
 
 		texture.Update(nil, pixels, winWidth*4)
 		renderer.Copy(texture, nil, nil)
